@@ -44,9 +44,9 @@ import numpy, random, time
 
 numberofpopulations = 100	#number of chromosomes in each generation
 random.seed(21506.0)		#random seed; if this line is commented, random seed is taken from system clock
-numberofparameters = 2
-parametersvalues = [[5.0,0.0,10.0],[10.0,0.0,20.0]]#,[10.0,0.0,20.0],[10.0,0.0,20.0]] 	#[mean, min., max.] for each parameter
-fitness_limit = 0.001		#The best fitness to reach during the process, lower is strict.
+numberofparameters = 3
+parametersvalues = [[678.0,100.0,1100.0],[186.0,0.0,500.0]],[44.0,0.0,100.0]#,[10.0,0.0,20.0]] 	#[mean, min., max.] for each parameter
+fitness_limit = 0.01		#The best fitness to reach during the process, lower is strict.
 outputfile = open('output_ga.txt','w')
 Pc = 0.5			#Crossover probability
 Pm = 0.05			#Mutation probability

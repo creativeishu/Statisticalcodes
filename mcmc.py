@@ -35,7 +35,7 @@ bb=[]
 parametersvalues = [[5.0,0.0,10.0,0.1],[10.0,0.0,20.0,0.1]]#,[10.0,0.0,20.0,0.1],[10.0,0.0,20.0,0.1]]
 numberofparameters = 2		#number of parameters
 numberofsteps = 100000		#number of steps
-random.seed(216.0)		#random seed to start the chain, if this line is commented, random seen is taken from system clock
+random.seed(2100.0)		#random seed to start the chain, if this line is commented, random seen is taken from system clock
 stepmultiplier = 7.0		#how big the steps should be (for each parameter)
 burn_in=0			#how many initial accepted points to remove
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -87,7 +87,7 @@ print "Acceptance ratio is: ",acceptedratio
 pylab.plot(aa,bb,'r')
 pylab.xlabel('a [slope]')
 pylab.ylabel('b [intercept]')
-#pylab.show()
-pylab.savefig('chain.pdf')
+pylab.show()
+#pylab.savefig('chain.pdf')
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

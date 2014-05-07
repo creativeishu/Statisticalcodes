@@ -1,7 +1,0 @@
-Current best in generation: 1 	 with best fitness 0.362682158297
-Current best in generation: 2 	 with best fitness 0.123624303622
-Current best in generation: 6 	 with best fitness 0.0870201572218
-Current best in generation: 8 	 with best fitness 0.0236911659382
-Current best in generation: 223 	 with best fitness 0.0055594701865
-Current best in generation: 683 	 with best fitness 0.00264927927819
-Current best in generation: 1500 	 with best fitness 0.000769368229396
