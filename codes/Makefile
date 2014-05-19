@@ -1,6 +1,6 @@
-OBJECTS = cosmomodule.o test.o
-COMPILER = gfortran
-FLAGS = -O3 -fopenmp
+OBJECTS = nr.o cosmomodule.o mcmc.o test.o
+COMPILER = mpif90
+FLAGS = -O3 
 .PHONY = clean
 
 test.output: main.exe

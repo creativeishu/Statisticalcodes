@@ -1,4 +1,7 @@
 module cosmo_module
+
+use nr
+
 implicit none
 
 real (kind=8), Parameter :: c_light = 3.0d5		! in km/sec^2
@@ -16,9 +19,21 @@ real (kind=8), Parameter :: n_s = 0.960d0
 real (kind=8), Parameter :: sigma_8 = 0.817d0	
 real (kind=8), Parameter :: w0 = -1.0d0	
 real (kind=8), Parameter :: wa = 0.0d0	
+
 real (kind=8), Parameter :: T_cmb = 2.72d0
+real (kind=8), Parameter :: RhoC = 2.778d11 * HubbleConstant**2
+
+real (kind=8), parameter :: overdensityCR = 2.0d2
 
 contains
+
+!-------------------------------------------------------------------------------
+real (kind=8) function likelihood(chi2)
+	real (kind=8), intent(in) :: chi2
+	likelihood = dexp(-chi2/2d0)
+	
+	end function likelihood
+
 
 !-------------------------------------------------------------------------------
 
@@ -34,6 +49,26 @@ real (kind=8) function Ez(redshift)
 	end function Ez
 
 !-------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------------------
+! Comoving distance
+
+real (kind=8) function ComovingDistance(z)
+	real (kind=8), intent(in) :: z
+	real (kind=8) :: ss
+
+	call qgaus(func,0.d0,z,ss)
+	ComovingDistance=c_light/(HubbleConstant*100.)*ss
+	end function ComovingDistance
+!-----------------------------------
+real (kind=8) function func(z)
+	real (kind=8), intent(in) :: z
+	func=1.d0/Ez(z)
+	return
+end function
+
+!-------------------------------------------------------------------------------
+
 real (kind=8) function concentration(mass,redshift)
 	real (kind=8), intent(in) :: mass,redshift
 	real (kind=8), parameter :: w = 0.029d0
@@ -95,6 +130,107 @@ subroutine NFW(mass,redshift,Rdim,radius,density) ! density in Msun/mpc^3
 
 !-------------------------------------------------------------------------------
 
+subroutine DensityProfileGas(mass,redshift,fgas,Rdim,radius,density)
+	integer (kind=4), intent(in) :: Rdim
+	integer (kind=4) :: i
+	real (kind=8), intent(in) :: mass, redshift,fgas
+	real (kind=8), intent(out), dimension(Rdim) :: radius, density
+	real (kind=8) :: xeq,GammaGas,power,norm,Rvir,conc,R_s
+
+	Rvir = VirialRadius(mass,redshift)
+	conc = concentration(mass,redshift)
+	R_s = Rvir/conc
+	xeq=conc/sqrt(5d0)
+    GammaGas = 1d0+ (((1d0+xeq)*(log(1d0+xeq))-(xeq))/&
+    			((1d0+3d0*xeq)*(log(1d0+xeq))))
+    power = 1d0/(GammaGas-1d0)
+	
+	norm = 0d0
+	do i=1,Rdim
+		radius(i) = Rvir/Rdim + float(i-1)/(Rdim-1)*(Rvir-Rvir/Rdim)
+	    density(i) = (log(1d0 + radius(i)/R_s) / (radius(i)/R_s) )**power
+	    if (i>1) then
+		norm = norm + density(i) * radius(i)**2 * (radius(i)-radius(i-1))
+		endif
+		enddo
+	norm = mass*fgas/4d0/pi/norm
+	density = density*norm
+	end subroutine DensityProfileGas
+
+!-------------------------------------------------------------------------------
+
+subroutine DensityProfileStars(mass,redshift,rmean,rsigma,Rdim,&
+				radius,density,Mstar_center)
+	integer (kind=4), intent(in) :: Rdim	
+	integer (kind=4) :: i
+
+	real (kind=8), intent(in) :: mass,redshift,rmean,rsigma
+	real (kind=8), intent(out), dimension(Rdim) :: radius,density
+	real (kind=8), intent(out) :: Mstar_center
+ 	real (kind=8), Parameter :: m10=11.59
+    real (kind=8), Parameter :: m11=1.195
+    real (kind=8), Parameter :: n10=0.035
+    real (kind=8), Parameter :: n11=-0.0247
+    real (kind=8), Parameter :: beta10=1.376
+    real (kind=8), Parameter :: beta11=-0.826
+    real (kind=8), Parameter :: gamma10=0.608
+    real (kind=8), Parameter :: gamma11=0.329
+    real (kind=8) :: m,n,beta,gm,norm,Rmin,Rvir
+    
+    m=1d1**(m10+m11*(redshift/(redshift+1)))
+    n=n10+n11*(redshift/(redshift+1))
+    beta=beta10+beta11*(redshift/(redshift+1))
+    gm=gamma10+gamma11*(redshift/(redshift+1))
+    Mstar_center=mass*(2d0*n*((mass/m)**(-beta)+(mass/m)**gm)**(-1.))
+
+    Rmin = 1d-3
+    density = exp(-((radius-Rmean*Rmin)/(Rsigma*Rmin))**2)
+    Rvir = VirialRadius(mass,redshift)
+
+	norm = 0d0
+	do i=1,Rdim
+		radius(i) = Rvir/Rdim + float(i-1)/(Rdim-1)*(Rvir-Rvir/Rdim)
+    	density(i) = exp(-((radius(i)-Rmean*Rmin)/(Rsigma*Rmin))**2)
+	    if (i>1) then
+			norm = norm + density(i) * radius(i)**2 * &
+				(radius(i)-radius(i-1))
+			endif
+		enddo
+    norm = Mstar_center / 4.0 / pi /norm
+    density = norm*density
+	end subroutine DensityProfileStars
+
+!-------------------------------------------------------------------------------
+
+subroutine AdiabaticContraction(radius,rho_DM,mass,redshift,Rdim,M_BCG,rho_DM_AC)
+	integer (kind=4), intent(in) :: Rdim
+	integer (kind=4) :: i
+	real (kind=8), intent(in) :: mass, redshift,M_BCG
+	real (kind=8), intent(in), dimension(Rdim) :: radius, rho_DM
+	real (kind=8), intent(out), dimension(Rdim) :: rho_DM_AC
+	real (kind=8) :: alpha,fd,Rvir,conc,R_s
+	real (kind=8), dimension(Rdim) :: Mi,ratio,x,xx,y2,rho_DM_AC_temp
+	
+   	alpha = 0.68d0
+	Rvir = VirialRadius(mass,redshift)
+	conc = concentration(mass,redshift)
+	R_s = Rvir/conc    
+	x = radius/R_s
+	Mi = mass * (log(1+x) - x/(1+x)) / (log(1+conc) - conc/(1+conc))
+	fd = 1.d0-M_BCG/mass
+	ratio = 1.d0 + alpha * (Mi/(fd*Mi + M_BCG) - 1.d0)
+	rho_DM_AC_temp = rho_DM * ratio**(-2.d0)
+	xx = x*ratio
+	call spline(xx,rho_DM_AC_temp,Rdim,0.0d0,0.0d0,y2)
+	do i=1,Rdim
+	    call splint(xx,rho_DM_AC_temp,y2,Rdim,x(i),rho_DM_AC(i))
+	    end do
+	end subroutine AdiabaticContraction
+
+
+!-------------------------------------------------------------------------------
+
+
 subroutine growthfactorDE(redshift,growthfactor)
 	integer (kind=4) :: i,j
 	integer (kind=4), parameter :: zdim=1000
@@ -118,7 +254,7 @@ subroutine growthfactorDE(redshift,growthfactor)
 			h=a(i) - a(i-1)
 			k1y = zz(i-1)*h
 			k1z = (-(3d0/a(i-1) + dedz(i-1)/E(i-1))*zz(i-1) + &
-					3d0*omega_m*g(i-1)/2d0/(a(i-1)**5)/E(i-1)**2)*h
+				3d0*omega_m*g(i-1)/2d0/(a(i-1)**5)/E(i-1)**2)*h
 			g(i) = g(i-1) + k1y
 			zz(i) = zz(i-1) + k1z
 			endif
@@ -132,6 +268,51 @@ subroutine growthfactorDE(redshift,growthfactor)
 		end do
 		
 	end subroutine growthfactorDE
+
+!-------------------------------------------------------------------------------
+
+real (kind=8) function sigmasquare_single(mass)
+	integer (kind=4), Parameter :: kdim=500
+	real (kind=8), intent(in) :: mass
+	real (kind=8) :: ss
+	real (kind=4), dimension(kdim) :: kk, pkk
+	real (kind=8), dimension(kdim) :: y2pk
+
+	real (kind=8) :: radius
+	real (kind=4) :: kmin,kmax
+	common /sigma2calc/ kk,pkk,y2pk, radius
+
+	kmin = 1.e-3
+	kmax = 1.e2
+	radius = (mass/((4.d0/3.d0)*RhoC*Omega_m*pi))**(1./3.)
+
+	call linearPk(kmin,kmax,kdim,kk,pkk)
+	call spline(dble(kk),dble(pkk),kdim,0.0d0,0.0d0,y2pk)
+
+	call qgaus(func_sigma2,dble(log10(kmin)),dble(log10(kmax)),ss)	
+	sigmasquare_single = ss/2d0/pi**2
+	end function sigmasquare_single
+
+!----------------------------------------------
+
+real (kind=8) function func_sigma2(k)
+	integer (kind=4), Parameter :: kdim=500
+	real (kind=8) :: k
+	real (kind=4), dimension(kdim) :: kk, pkk
+	real (kind=8), dimension(kdim) :: y2pk
+	real (kind=8) :: radius,x,W,pk
+
+	common /sigma2calc/ kk,pkk,y2pk, radius
+
+	k = 10**k
+	x = radius*k	
+	W = 3d0 * (sin(x) - x*cos(x)) / x**3
+	call splint(dble(kk),dble(pkk),y2pk,kdim,k,pk)
+	func_sigma2 = pk * k**3 * W**2
+
+	return
+	end function func_sigma2
+
 
 !-------------------------------------------------------------------------------
 
@@ -153,8 +334,10 @@ subroutine linearPk(kmin,kmax,numk,k1,pk)
     real    omega0,f_baryon,hubble,Tcmb,kmax,kmin,omegab,omhh
 	real	k,tf_full,tf_baryon,tf_cdm,tf_nowiggles,tf_zerobaryon,k_peak
 	integer numk, numk1,i
-	parameter (numk1=100)
-	real k1(numk1),tk(numk1),pk(numk1),xx,integral,integrand,normalisation,sigma8,ns,pi
+	real (kind=4), dimension(numk) :: k1,tk,pk
+	real xx,integral,integrand,&
+			normalisation,sigma8,ns,pi
+
 
 	omega0 = Omega_m
 	omegab = Omega_b
@@ -166,7 +349,6 @@ subroutine linearPk(kmin,kmax,numk,k1,pk)
 	f_baryon=omegab/omega0
 	omhh = omega0*hubble*hubble
 	pi=4.0*atan(1.0)
-	write(*,*) "testing",f_baryon,omhh,omega0,hubble
 
     call TFset_parameters(omhh, f_baryon, Tcmb)
 
@@ -183,7 +365,8 @@ subroutine linearPk(kmin,kmax,numk,k1,pk)
 	
 	do i=1,numk-1
 		xx=8.*k1(i)
-		integrand=(tk(i)**2.)*(k1(i)**(ns+2.))*((3.*((sin(xx)-xx*cos(xx))/xx**3.))**2.)*(k1(i+1)-k1(i))
+		integrand=(tk(i)**2.)*(k1(i)**(ns+2.))*&
+			((3.*((sin(xx)-xx*cos(xx))/xx**3.))**2.)*(k1(i+1)-k1(i))
 		integral=integral+integrand
 	end do
 	
