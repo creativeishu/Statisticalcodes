@@ -1,4 +1,4 @@
-OBJECTS = nr.o cosmomodule.o mcmc.o test.o
+OBJECTS = nr.o cosmomodule.o mcmc.o fisher.o test.o
 COMPILER = mpif90
 FLAGS = -O3 
 .PHONY = clean

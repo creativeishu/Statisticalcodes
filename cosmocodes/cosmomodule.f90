@@ -170,7 +170,8 @@ subroutine NFW(mass,redshift,Rdim,radius,density) ! density in Msun/mpc^3
 		 / (log(1 + conc) - conc / (1 + conc))
 	
 	forall (i=1:Rdim)
-		radius(i) = Rvir/Rdim + float(i-1)/(Rdim-1)*(Rvir-Rvir/Rdim)
+		radius(i) = log10(Rvir/Rdim) + float(i-1)/(Rdim-1)*(log10(Rvir)-log10(Rvir/Rdim))
+		radius(i) = 10**radius(i)
 		endforall
 	density = Rho_s / (radius/Rs) / (1d0+radius/Rs)**2
 	end subroutine NFW
@@ -194,7 +195,8 @@ subroutine DensityProfileGas(mass,redshift,fgas,Rdim,radius,density)
 	
 	norm = 0d0
 	do i=1,Rdim
-		radius(i) = Rvir/Rdim + float(i-1)/(Rdim-1)*(Rvir-Rvir/Rdim)
+		radius(i) = log10(Rvir/Rdim) + float(i-1)/(Rdim-1)*(log10(Rvir)-log10(Rvir/Rdim))
+		radius(i) = 10**radius(i)
 	    density(i) = (log(1d0 + radius(i)/R_s) / (radius(i)/R_s) )**power
 	    if (i>1) then
 		norm = norm + density(i) * radius(i)**2 * (radius(i)-radius(i-1))
@@ -236,7 +238,8 @@ subroutine DensityProfileStars(mass,redshift,rmean,rsigma,Rdim,&
 
 	norm = 0d0
 	do i=1,Rdim
-		radius(i) = Rvir/Rdim + float(i-1)/(Rdim-1)*(Rvir-Rvir/Rdim)
+		radius(i) = log10(Rvir/Rdim) + float(i-1)/(Rdim-1)*(log10(Rvir)-log10(Rvir/Rdim))
+		radius(i) = 10**radius(i)
     	density(i) = exp(-((radius(i)-Rmean*Rmin)/(Rsigma*Rmin))**2)
 	    if (i>1) then
 			norm = norm + density(i) * radius(i)**2 * &

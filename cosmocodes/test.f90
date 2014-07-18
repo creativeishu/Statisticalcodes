@@ -20,24 +20,34 @@ real (kind=8), dimension(kdim_linear) :: Pk_nonlinear,k_nonlinear
 real (kind=8), dimension(kdim_linear) :: Pk1h_nonlinear,Pk2h_nonlinear
 
 
+Mcrit=1d16
+do i=1,Rdim
+	mass = 1d1 + float(i-1)/(Rdim-1) * 6d0
+	mass = 10**mass
+	write(18,*) mass, Fgas_Mhalo(mass)
+	end do
+
+stop
+
+
 mass = 2d14
 redshift = 0d0
 call NFW(mass,0d0,Rdim,radius,rhoNFW)
 call DensityProfileGas(mass,redshift,0.15d0,Rdim,radius,rhoGAS)
-call DensityProfileStars(mass,redshift,1d0,3d0,Rdim,&
+call DensityProfileStars(mass,redshift,0d0,3d0,Rdim,&
 				radius,rhoBCG,Mstar_center)
 call AdiabaticContraction(radius,rhoNFW,mass,redshift,Rdim,Mstar_center,rho_DM_AC)
 
-!do i=1,Rdim
-!	write(*,*) radius(i),rhoNFW(i),rhoGAS(i),rhoBCG(i),rho_DM_AC(i)
-!end do
+do i=1,Rdim
+	write(*,*) radius(i),rhoNFW(i),rhoGAS(i),rhoBCG(i),rho_DM_AC(i)
+end do
 
 baryons=.True.
 AC=.True.
-Mcrit=1d13
+Mcrit=1d16
 call pknonlinear(redshift,k_nonlinear,Pk_nonlinear,pk1h_nonlinear,pk2h_nonlinear)
 do i=1, kdim_linear
-	write(12,*) k_nonlinear(i),pk_nonlinear(i),pk1h_nonlinear(i),pk2h_nonlinear(i)
+	write(19,*) k_nonlinear(i),pk_nonlinear(i),pk1h_nonlinear(i),pk2h_nonlinear(i)
 end do
 
 
