@@ -1,5 +1,6 @@
 module fisher
 use cosmo_module
+use nr
 
 implicit none
 
@@ -21,10 +22,20 @@ real (kind=8), dimension(3) :: ConfidenceLevelMultiplier
 contains
 
 !======================================================================================
-real (kind=8) function chisquare(parameters)
+real (kind=8) function chisquare(parameters,nop)
+	integer (kind=4) :: nop
 	real (kind=8), intent(in), dimension(numberofparameters) :: parameters
-	chisquare=0d0
+	chisquare = chi2(parameters,nop)
 	end function chisquare
+
+!======================================================================================
+
+subroutine write_fishermatrix(number)
+	integer (kind=4) :: i,number
+	do i=1,numberofparameters
+		write(number,*) fishermatrix(i,:)
+		end do
+	end subroutine write_fishermatrix
 
 !======================================================================================
 subroutine calculatefishermatrix()
@@ -35,9 +46,9 @@ subroutine calculatefishermatrix()
 	real (kind=8), dimension(numberofparameters) :: parametersplusminus
 	real (kind=8), dimension(numberofparameters) :: parametersminusplus
 	real (kind=8), dimension(numberofparameters) :: parametersminusminus
-	real (kind=8) :: fiducial_chi2,chi2
+	real (kind=8) :: fiducial_chi2
 	
-	fiducial_chi2 = chisquare(fiducialparameters)
+	fiducial_chi2 = chisquare(fiducialparameters,numberofparameters)
 
 	do i=1,numberofparameters
 		do j=i,numberofparameters
@@ -49,8 +60,8 @@ subroutine calculatefishermatrix()
 				parametersminus = fiducialparameters
 				parametersminus(i) = parametersminus(i) + deltaparameters(i)	
 			
-				Fishermatrix(i,j) = (chisquare(parametersplus) - &
-									2*fiducial_chi2 + chisquare(parametersminus)) / &
+				Fishermatrix(i,j) = (chisquare(parametersplus,numberofparameters) - &
+									2*fiducial_chi2 + chisquare(parametersminus,numberofparameters)) / &
 									deltaparameters(i)**2			
 			else
 				
@@ -71,15 +82,15 @@ subroutine calculatefishermatrix()
 				parametersminusplus(i) = parametersminusplus(i) - deltaparameters(i)
 				parametersminusplus(j) = parametersminusplus(j) + deltaparameters(j)
 				
-				Fishermatrix(i,j) = (chisquare(parametersplusplus) + &
-									chisquare(parametersminusminus) - &
-									chisquare(parametersplusminus) - &
-									chisquare(parametersminusplus)) / &
+				Fishermatrix(i,j) = (chisquare(parametersplusplus,numberofparameters) + &
+									chisquare(parametersminusminus,numberofparameters) - &
+									chisquare(parametersplusminus,numberofparameters) - &
+									chisquare(parametersminusplus,numberofparameters)) / &
 									4d0/deltaparameters(i)/deltaparameters(j)
 				Fishermatrix(j,i) = Fishermatrix(i,j)
 			end if
 			
-			
+			write(*,*) "Fisher matrix element",i,j,Fishermatrix(i,j)
 			end do
 			end do
 
@@ -88,13 +99,20 @@ subroutine calculatefishermatrix()
 
 !======================================================================================
 subroutine fisher2covariance()
-	integer (kind=4) :: i
+	integer (kind=4) :: i,i1,i2
 	integer (kind=4), dimension(numberofparameters) :: indx
 	real (kind=8) :: d
 	real (kind=8), dimension(numberofparameters,numberofparameters) :: fishertemp
 
 	fishertemp = Fishermatrix
 	call ludcmp(fishertemp,numberofparameters,numberofparameters,indx,d)
+
+	do i1=1,numberofparameters
+		do i2=1,numberofparameters
+				covariance(i1,i2)=0.
+				end do
+				covariance(i1,i1)=1.
+				end do
 
 	do i=1,numberofparameters
 		call lubksb(fishertemp,numberofparameters,numberofparameters,indx,covariance(1,i))
@@ -142,96 +160,6 @@ subroutine FigureOfMerit(i,j,CL,fom)
 	fom = pi * ConfidenceLevelMultiplier(CL)**2 * a_ellipse(i,j) * b_ellipse(i,j) 
 
 	end subroutine FigureOfMerit
-
-!======================================================================================
-
-      SUBROUTINE ludcmp(a,n,np,indx,d)
-      INTEGER n,np,indx(n),NMAX
-      DOUBLE PRECISION d,a(np,np),TINY
-      PARAMETER (NMAX=500,TINY=1.0d-20)
-      INTEGER i,imax,j,k
-      DOUBLE PRECISION aamax,dum,sum,vv(NMAX)
-      d=1.d0
-      do 12 i=1,n
-        aamax=0.d0
-        do 11 j=1,n
-          if (abs(a(i,j)).gt.aamax) aamax=abs(a(i,j))
-11      continue
-!        if (aamax.eq.0.d0) pause 'singular matrix in ludcmp'
-        vv(i)=1.d0/aamax
-12    continue
-      do 19 j=1,n
-        do 14 i=1,j-1
-          sum=a(i,j)
-          do 13 k=1,i-1
-            sum=sum-a(i,k)*a(k,j)
-13        continue
-          a(i,j)=sum
-14      continue
-        aamax=0.d0
-        do 16 i=j,n
-          sum=a(i,j)
-          do 15 k=1,j-1
-            sum=sum-a(i,k)*a(k,j)
-15        continue
-          a(i,j)=sum
-          dum=vv(i)*abs(sum)
-          if (dum.ge.aamax) then
-            imax=i
-            aamax=dum
-          endif
-16      continue
-        if (j.ne.imax)then
-          do 17 k=1,n
-            dum=a(imax,k)
-            a(imax,k)=a(j,k)
-            a(j,k)=dum
-17        continue
-          d=-d
-          vv(imax)=vv(j)
-        endif
-        indx(j)=imax
-        if(a(j,j).eq.0.d0)a(j,j)=TINY
-        if(j.ne.n)then
-          dum=1.d0/a(j,j)
-          do 18 i=j+1,n
-            a(i,j)=a(i,j)*dum
-18        continue
-        endif
-19    continue
-      return
-      END
-
-!======================================================================================
-      SUBROUTINE lubksb(a,n,np,indx,b)
-      INTEGER n,np,indx(n)
-      DOUBLE PRECISION a(np,np),b(n)
-      INTEGER i,ii,j,ll
-      DOUBLE PRECISION sum
-      ii=0
-      do 12 i=1,n
-        ll=indx(i)
-        sum=b(ll)
-        b(ll)=b(i)
-        if (ii.ne.0)then
-          do 11 j=ii,i-1
-            sum=sum-a(i,j)*b(j)
-11        continue
-        else if (sum.ne.0.d0) then
-          ii=i
-        endif
-        b(i)=sum
-12    continue
-      do 14 i=n,1,-1
-        sum=b(i)
-        do 13 j=i+1,n
-          sum=sum-a(i,j)*b(j)
-13      continue
-        b(i)=sum/a(i,i)
-14    continue
-      return
-      END
-
 
 !======================================================================================
 

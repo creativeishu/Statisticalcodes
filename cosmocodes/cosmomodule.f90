@@ -4,28 +4,28 @@ use nr
 
 implicit none
 
-real (kind=8), Parameter :: c_light = 3.0d5		! in km/sec^2
+real (kind=8), Parameter :: c_light = 2.99792458d5		! in km/sec^2
 real (kind=8), Parameter :: pi = 4d0*atan(1d0)
 real (kind=8), Parameter :: G_constant = 6.6738480d-11	! in m^3/kg/sec^2
 
 ! Cosmology
-real (kind=8), Parameter :: Omega_m = 0.279d0	
-real (kind=8), Parameter :: Omega_b = 0.0462d0	
-real (kind=8), Parameter :: Omega_r = 0d0	
-real (kind=8), Parameter :: Omega_k = 0d0	
-real (kind=8), Parameter :: Omega_l = 1d0 - Omega_m - Omega_r - Omega_k
-real (kind=8), Parameter :: HubbleConstant = 0.701d0	
-real (kind=8), Parameter :: n_s = 0.960d0	
-real (kind=8), Parameter :: sigma_8 = 0.817d0	
-real (kind=8), Parameter :: w0 = -1.0d0	
-real (kind=8), Parameter :: wa = 0.0d0	
+real (kind=8) :: Omega_m 
+real (kind=8) :: Omega_b
+real (kind=8) :: Omega_r	
+real (kind=8) :: Omega_k 
+real (kind=8) :: Omega_l 
+real (kind=8) :: HubbleConstant	
+real (kind=8) :: n_s 
+real (kind=8) :: sigma_8
+real (kind=8) :: w0 
+real (kind=8) :: wa
 
-real (kind=8), Parameter :: T_cmb = 2.72d0
-real (kind=8), Parameter :: RhoC = 2.778d11
-real (kind=8), Parameter :: RhoM = RhoC * Omega_m
+real (kind=8) :: T_cmb
+real (kind=8) :: RhoC 
+real (kind=8) :: RhoM 
 
-real (kind=8), parameter :: overdensityCR = 2.0d2
-real (kind=8), Parameter :: deltaC = 1.686d0
+real (kind=8) :: overdensityCR 
+real (kind=8) :: deltaC
 real (kind=8) :: overdensity_matter
 
 !baryon parameters
@@ -35,12 +35,27 @@ real (kind=8) :: Mcrit
 real (kind=8), Parameter :: beta_Mcrit = 2d0
 
 !linear Power spectrum
-integer (kind=4), Parameter :: kdim_linear=500
+integer (kind=4), Parameter :: kdim_linear=100,zdim_pk=50
 real (kind=8), dimension(kdim_linear) :: k_linear, Pk_linear, y2pk_linear,dk_linear
 
 !Growthfactor
-integer (kind=4), Parameter :: zdim_gf=500
+integer (kind=4), Parameter :: zdim_gf=2500
 real (kind=8), dimension(zdim_gf) :: redshift_gf, gf_gf, y2gf_gf
+
+!Cl data 
+integer (kind=4), Parameter :: redshiftbins=3,ell_dim=100
+real (kind=8) :: ell_min, ell_max
+real (kind=8), Parameter, dimension(redshiftbins+1) :: binboundaries= (/0.01,0.8,1.5,4.0/)
+real (kind=8), dimension(ell_dim) :: ell_data
+real (kind=8), dimension(ell_dim,redshiftbins*(redshiftbins+1)/2) :: C_ell_data
+real (kind=8), dimension(ell_dim,redshiftbins*(redshiftbins+1)/2,redshiftbins*(redshiftbins+1)/2) :: Inverse_Covariance
+
+
+
+
+! Euclid parameter:: covariance matrix
+real (kind=8), Parameter :: sigma_e=0.33d0, fsky = 0.55d0
+
 
 contains
 
@@ -52,6 +67,74 @@ real (kind=8) function likelihood(chi2)
 	
 	end function likelihood
 
+
+real (kind=8) function chi2(parameters,nop)
+	integer (kind=4) :: i
+	integer (kind=4), intent(in) :: nop
+	real (kind=8), dimension(nop) :: parameters
+	real (kind=8), dimension(ell_dim) :: ell
+	real (kind=8), dimension(ell_dim,redshiftbins*(redshiftbins+1)/2) :: C_ell,delta_C_ell
+	real (kind=8), dimension(1,redshiftbins*(redshiftbins+1)/2) :: temp1,temp2
+	real (kind=8), dimension(1,1) :: chi2_temp
+	
+	Omega_m = parameters(1)
+	sigma_8 = parameters(2)
+	HubbleConstant = parameters(3)
+	n_s = parameters(4)
+	Omega_b = parameters(5)
+	w0 = parameters(6)
+	wa = parameters(7)
+	
+	if (nop.eq.8) then
+		Mcrit = 10**parameters(8)
+	else if (nop.gt.8) then
+		write(*,*) "Enter 7 or 8 parameter for DMO or BAR model"
+		stop
+	endif
+	
+	
+	call pkTOcl(ell_min,ell_max,ell_dim,ell,C_ell)
+	delta_C_ell = C_ell - C_ell_data
+
+	chi2=0d0
+	do i=1,ell_dim
+		temp1 = (matmul((delta_C_ell(i:i,:)),Inverse_Covariance(i,:,:)))
+		temp2 = delta_C_ell(i:i,:)
+		chi2_temp = matmul(temp1,transpose(temp2))
+		chi2 = chi2 + chi2_temp(1,1)
+		end do
+	end function chi2
+
+!-------------------------------------------------------------------------------
+
+subroutine set_fiducial_parameters()
+	Omega_m = 0.279d0
+	Omega_b = 0.0462d0
+	Omega_r = 0d0
+	Omega_k = 0d0	
+	Omega_l = 1d0 - Omega_m - Omega_r - Omega_k
+	HubbleConstant = 0.701d0	
+	n_s = 0.960d0
+	sigma_8 = 0.817d0	
+	w0 = -1.0d0	
+	wa = 0.0d0	
+	
+	T_cmb = 2.72d0
+	RhoC = 2.778d11
+	RhoM = RhoC * Omega_m
+
+	
+	overdensityCR = 2.0d2
+	deltaC = 1.686d0
+	
+	baryons = .False.
+	AC = .False.
+	Mcrit = 1d9
+	
+	ell_min = 1d1
+	ell_max = 2d4
+	
+	end subroutine set_fiducial_parameters
 !-------------------------------------------------------------------------------
 
 subroutine Initialise_cosmo_module(redshift)
@@ -61,7 +144,7 @@ subroutine Initialise_cosmo_module(redshift)
 	real (kind=4) :: kmin,kmax
 	
 	kmin = 1.e-3
-	kmax = 1.e2
+	kmax = 1.e3
 	
 	call linearPk(kmin,kmax,kdim_linear,kk,pkk)
 	k_linear = dble(kk)
@@ -84,6 +167,79 @@ subroutine Initialise_cosmo_module(redshift)
 
 
 !-------------------------------------------------------------------------------
+
+subroutine write_cl_data(number,number_cov)
+	integer (kind=4) :: i,j,number,number_cov
+	real (kind=8), dimension(ell_dim) :: ell
+	real (kind=8), dimension(ell_dim,redshiftbins*(redshiftbins+1)/2) :: C_ell
+	real (kind=8), dimension(ell_dim,redshiftbins*(redshiftbins+1)/2,redshiftbins*(redshiftbins+1)/2) :: Covariance,inverse
+
+	call pktocl(ell_min,ell_max,ell_dim,ell,C_ell)
+	
+	do i=1,ell_dim
+		write(number,2000) ell(i),C_ell(i,:)
+		2000 format(f10.4, e15.7, e15.7, e15.7, e15.7, e15.7, e15.7)
+	end do
+	
+	if (number_cov.lt.0) then
+		continue
+	else
+		call covariance_cl(ell,C_ell,ell_dim,covariance,inverse)
+		do i=1,ell_dim
+			do j = 1,redshiftbins*(redshiftbins+1)/2
+				write(number_cov,3000) inverse(i,j,:)
+				3000 format(e15.7, e15.7, e15.7, e15.7, e15.7, e15.7)
+				end do
+				end do
+	end if
+	
+	end subroutine
+
+!-------------------------------------------------------------------------------
+
+subroutine read_cl_data_DMO()
+	integer (kind=4) :: i,j
+	
+	open (5,file='data/cl_lmax_20000_dmo.txt')
+	do i = 1,ell_dim
+		read(5,*) ell_data(i),C_ell_data(i,:)
+	end do
+	close(5)
+	
+	open (5,file='data/invcov_lmax_20000_dmo.txt')
+	do i=1,ell_dim
+	do j=1,redshiftbins*(redshiftbins+1)/2
+		read(5,*) Inverse_covariance(i,j,:)
+	end do
+	end do
+	close(5)
+	
+	end subroutine read_cl_data_DMO
+
+!-------------------------------------------------------------------------------
+
+subroutine read_cl_data_BAR()
+	integer (kind=4) :: i,j
+	
+	open (5,file='data/cl_lmax_20000_Mcrit_1d13_bar.txt')
+	do i = 1,ell_dim
+		read(5,*) ell_data(i),C_ell_data(i,:)
+	end do
+	close(5)
+	
+	open (5,file='data/invcov_lmax_20000_Mcrit_1d13_bar.txt')
+	do i=1,ell_dim
+	do j=1,redshiftbins*(redshiftbins+1)/2
+		read(5,*) Inverse_covariance(i,j,:)
+	end do
+	end do
+	close(5)
+	
+	end subroutine read_cl_data_BAR
+
+!-------------------------------------------------------------------------------
+
+
 
 real (kind=8) function Ez(redshift)
 	real (kind=8), intent(in) :: redshift
@@ -536,7 +692,7 @@ subroutine pknonlinear(redshift,k_nonlinear,Pk_nonlinear,pk1h_nonlinear,pk2h_non
 		
 		call NFW(Mass_array(i),redshift,Rdim,radius_matrix(:,i),density_matrix(:,i))
 		if (baryons) then
-			call DensityProfileStars(Mass_array(i),redshift,0d0,3d0,Rdim,&
+			call DensityProfileStars(Mass_array(i),redshift,0d0,1d0,Rdim,&
 				radius_matrix(:,i),densityMstar_matrix(:,i),Mstar_center)
 			call DensityProfileGas(Mass_array(i),redshift,fgas(i),Rdim,&
 									radius_matrix(:,i),densitygas_matrix(:,i))
@@ -581,6 +737,235 @@ subroutine pknonlinear(redshift,k_nonlinear,Pk_nonlinear,pk1h_nonlinear,pk2h_non
 	k_nonlinear = k_linear
 	end subroutine
 
+!=======================================================================
+! distribution of sources Smail et. al. 1994
+
+subroutine distributionofcsources(zmin,zmax,zdim,z,n,ki,zmean,norm)
+implicit none
+	integer (kind=4) :: i,zdim
+!	integer (kind=4), parameter :: zdim = 100
+	real (kind=8), intent(out), dimension(zdim) :: z,n,ki
+	real (kind=8), intent(in) :: zmin
+	real (kind=8) :: zmax, z0,norm,n0,zmean
+	
+	z0 = zmean / 3
+	norm = 0.0d0
+	n0 = 1.18d9	! from Takada and Jain 2009
+	do i = 1,zdim
+		z(i) = dlog10(zmin) + float(i-1) / (zdim - 1) * (dlog10(zmax) - dlog10(zmin))
+		z(i) = 10**z(i)
+		n(i) = n0 * 4.0 * z(i)**2 * dexp(-z(i)/z0)
+		ki(i) = ComovingDistance(z(i))
+		if (i.gt.1) then
+		norm = norm + n(i) * (z(i) - z(i-1))
+		end if
+	end do
+	!norm = norm * (pi/180.d0)**2 / (3600.d0)		!number of galaxies per arcmin^2
+end subroutine
+
+!=======================================================================
+! Calculating lensing weights using Takada and Jain 2009
+subroutine lensingweightsbin(z1,z2,zdim,z,ki,n,g)
+implicit none
+	integer (kind=4) :: i,j,zdim
+	integer (kind=4), parameter :: zint = 200
+	real (kind=8) :: z1,z2
+	real (kind=8), intent(in), dimension(zdim) :: z,ki,n
+	real (kind=8), dimension(zdim) :: g,y2_n,y2_ki
+	real (kind=8) :: ki1,ki2,dzprime,zprime,nprime,kiprime,zstart
+	real  (kind=8) :: galaxiesinbin, c
+	
+	ki1 =  ComovingDistance(z1)
+	ki2 =  ComovingDistance(z2)
+	call spline(z,n,zdim,1d31,1d31,y2_n)
+	call spline(z,ki,zdim,1d31,1d31,y2_ki)
+
+	! calculating number of galaxies per unit steradian in the bin
+	galaxiesinbin = 0.0d0
+	dzprime = (z2 - z1) / zint
+	do i = 1,zint
+		zprime = z1 + float(i-1) / (zint - 1) * (z2 - z1)
+		call splint(z,n,y2_n,zdim,zprime,nprime)
+		galaxiesinbin = galaxiesinbin + nprime * dzprime
+	end do
+	!write(*,*) galaxiesinbin* (3.1415/180.)**2 / (3600.) in per arcmin^2
+
+	do i = 1,zdim
+		if (z(i).gt.z2) then
+			g(i) = 0.d0
+		else
+			if (z(i).lt.z1) then
+				zstart = z1
+			else
+				zstart = z(i)
+			end if
+			dzprime = (z2 - zstart) / zint
+			g(i) = 0.d0
+			do j = 1,zint
+				zprime = zstart + float(j-1) / (zint - 1) * (z2 - zstart)
+				call splint(z,n,y2_n,zdim,zprime,nprime)
+				call splint(z,ki,y2_ki,zdim,zprime,kiprime)
+				g(i) = g(i) + dzprime * nprime * (kiprime - ki(i)) / kiprime 
+			end do
+		end if
+		g(i) = g(i) * ki(i) * (1.0 + z(i)) * 1.5 * Omega_m * &
+				(100.0)**2 / galaxiesinbin / c_light**2
+	!	write(11,*) z(i),g(i)
+	end do
+	
+end subroutine
+
+!=======================================================================
+!=======================================================================
+! P(k) --> C(l)
+subroutine pkTOcl(lmin,lmax,ldim,ell,C_ell)
+implicit none
+	integer (kind=4), intent(in) :: ldim
+	integer (kind=4), parameter :: kdim=100,zint=200
+	integer (kind=4) :: i,j,i1,i2,zdim
+	
+	real (kind=8), intent(in) :: lmin,lmax
+	real (kind=8), intent(out), dimension(ldim) :: ell
+	real (kind=8), intent(out), dimension(ldim,redshiftbins*(redshiftbins+1)/2) :: C_ell
+!	real (kind=8), dimension(redshiftbins+1) :: binboundaries
+	real (kind=8) :: kmin,kmax,zmin,zmax,zmean,norm,kimin,kimax
+	real (kind=8), dimension(zdim_pk) :: z,n,ki,y2_kiz,y2_w1,y2_w2
+	real (kind=8), dimension(zdim_pk,redshiftbins) :: g
+	real (kind=8), dimension(kdim_linear,zdim_pk) :: pktable,y2_pktable
+	real (kind=8) :: kiprime,dkiprime,kk,zz,pkk,w1,w2,fdm,fgas
+	real (kind=8), dimension(kdim_linear) :: k,pk1h_nonlinear,pk2h_nonlinear
+	integer (kind=4), Parameter :: kdimtemp=1000, zdimtemp=1000
+	
+!	zdim = zdim_pk
+	fdm = 0.85	
+
+	
+	zmin = 0.01
+	zmax = 4.0
+	zmean = 1.
+	call distributionofcsources(zmin,zmax,zdim_pk,z,n,ki,zmean,norm)
+	
+	do i = 1,redshiftbins
+		call lensingweightsbin(binboundaries(i),binboundaries(i+1),zdim_pk,z,ki,n,g(:,i))
+	end do
+	call spline(ki,z,zdim_pk,1d31,1d31,y2_kiz)
+
+	kimin = ComovingDistance(0.01d0)
+	kimax = ComovingDistance(3.00d0)
+		
+	do i = 1,zdim_pk
+		call pknonlinear(z(i),k,pktable(:,i),pk1h_nonlinear,pk2h_nonlinear)
+	end do
+	call splie2(k,z,pktable,kdim_linear,zdim_pk,y2_pktable)
+
+	dkiprime = (kimax - kimin) / zint
+	do i1 = 1,redshiftbins
+	do i2 = i1,redshiftbins
+	!	write(*,*) i1,i2,(i1-1)*redshiftbins+i2-i1*(i1-1)/2
+		do i = 1,ldim
+			ell(i) = log10(lmin) + float(i-1) / (ldim - 1) * (log10(lmax) - log10(lmin))
+			ell(i) = 10**ell(i)
+			C_ell(i,(i1-1)*redshiftbins+i2-i1*(i1-1)/2) = 0.
+			do j = 1,zint
+				kiprime = kimin + float(j-1) / (zint - 1) * (kimax - kimin)
+				kk = ell(i) / kiprime
+				call splint(ki,z,y2_kiz,zdim_pk,kiprime,zz)
+
+				call spline(ki,g(:,i1),zdim_pk,1d31,1d31,y2_w1)
+				call spline(ki,g(:,i2),zdim_pk,1d31,1d31,y2_w2)
+				call splint(ki,g(:,i1),y2_w1,zdim_pk,kiprime,w1)
+				call splint(ki,g(:,i2),y2_w2,zdim_pk,kiprime,w2)
+
+				call splin2(k,z,pktable,y2_pktable,kdim_linear,zdim_pk,kk,zz,pkk)
+				C_ell(i,(i1-1)*redshiftbins+i2-i1*(i1-1)/2) = &
+							C_ell(i,(i1-1)*redshiftbins+i2-i1*(i1-1)/2) +&
+							dkiprime / kiprime**2 * w1 * w2 * pkk 
+							
+			end do
+		end do
+	end do
+	end do
+	
+end subroutine
+!=======================================================================
+
+subroutine covariance_cl(l,cl,ldim,cov,inv)
+	integer (kind=4) :: i,j,i1,i2,i3,i4,index,index1,index2
+	integer (kind=4), intent(in) :: ldim
+	real (kind=8), intent(in),dimension(ldim) :: l
+	real (kind=8) ,dimension(ldim) :: delta_l
+	real (kind=8), intent(in),dimension(ldim,redshiftbins*(redshiftbins+1)/2) :: cl
+	real (kind=8), dimension(ldim,redshiftbins*(redshiftbins+1)/2) :: cl_obs
+	real (kind=8), dimension(ldim,redshiftbins*(redshiftbins+1)/2,redshiftbins*(redshiftbins+1)/2) :: cov,inv
+	real (kind=8), dimension(redshiftbins*(redshiftbins+1)/2,redshiftbins*(redshiftbins+1)/2) :: cov_temp,inv_temp
+
+	real (kind=8), dimension(redshiftbins) :: nos_bin
+	real (kind=8), dimension(zdim_pk) :: z,n,ki
+	real (kind=8) :: zmean
+	
+	integer (kind=4), dimension(redshiftbins*(redshiftbins+1)/2) :: indx
+	real (kind=8) :: d
+	
+	zmean = 1.0
+	do i=1,redshiftbins
+	call distributionofcsources(binboundaries(i),binboundaries(i+1),zdim_pk,z,n,ki,zmean,nos_bin(i))
+
+	end do
+	
+	do i =2,ldim
+		delta_l(i) = l(i) - l(i-1)
+		end do
+		delta_l(1) = delta_l(2)
+	do i=1,ldim
+	do i1=1,redshiftbins
+		do i2 = i1,redshiftbins
+		!	write(*,*) i1,i2,(i1-1)*redshiftbins+i2 - (i1-1)*(i1)/2
+			index = (i1-1)*redshiftbins+i2 - (i1-1)*(i1)/2
+			if (i1.eq.i2) then
+				cl_obs(i,index) = cl(i,index) + sigma_e**2/nos_bin(i1)
+			else
+				cl_obs(i,index) = cl(i,index)
+			end if
+		end do
+		end do
+		end do
+	
+	do i=1,ldim
+		do i1=1,redshiftbins
+			do i2=i1,redshiftbins
+				index1 = (i1-1)*3+i2 - (i1-1)*(i1)/2
+				do i3=1,redshiftbins
+					do i4=i3,redshiftbins
+						index2 = (i3-1)*3+i4 - (i3-1)*(i3)/2
+						cov(i,index1,index2) = 1d0 / (2d0*l(i)+1) / delta_l(i) / fsky * &
+												(cl_obs(i,(i1-1)*3+i3 - (i1-1)*(i1)/2) * &
+												cl_obs(i,(i2-1)*3+i4 - (i2-1)*(i2)/2) + &
+												cl_obs(i,(i1-1)*3+i4 - (i1-1)*(i1)/2) * &
+												cl_obs(i,(i2-1)*3+i3 - (i2-1)*(i2)/2))
+						end do
+						end do
+						end do
+						end do
+
+						cov_temp = cov(i,:,:)
+						do i1=1,redshiftbins*(redshiftbins+1)/2
+						do i2=1,redshiftbins*(redshiftbins+1)/2
+								inv_temp(i1,i2)=0.
+							end do
+								inv_temp(i1,i1)=1.
+								end do
+						
+						call ludcmp(cov_temp,redshiftbins*(redshiftbins+1)/2,redshiftbins*(redshiftbins+1)/2,indx,d)
+						do j=1,redshiftbins*(redshiftbins+1)/2
+							call lubksb(cov_temp,redshiftbins*(redshiftbins+1)/2,redshiftbins*(redshiftbins+1)/2,indx,inv_temp(1,j))
+							end do
+						inv(i,:,:) = inv_temp
+
+						end do
+
+	end subroutine covariance_cl
+
+!=======================================================================
 
 
 !-------------------------------------------------------------------------------

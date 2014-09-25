@@ -1,16 +1,19 @@
 OBJECTS = nr.o cosmomodule.o mcmc.o fisher.o test.o
-COMPILER = mpif90
+COMPILER = gfortran
 FLAGS = -O3 
+FINAL = main.exe
 .PHONY = clean
 
-test.output: main.exe
-	./main.exe > test.output
 
-main.exe: $(OBJECTS)
-	$(COMPILER) $(FLAGS) $(OBJECTS) -o main.exe
+
+test.output: $(FINAL)
+	time ./$(FINAL)  #> test.output
+
+$(FINAL): $(OBJECTS)
+	$(COMPILER) $(FLAGS) $(OBJECTS) -o $(FINAL)
 
 %.o: %.f90
 	$(COMPILER) $(FLAGS) -c $<
 
 clean:
-	rm *.o *.mod *.exe *.output
+	rm *.o *.mod *.output

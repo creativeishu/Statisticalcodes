@@ -26,14 +26,14 @@ contains
       b=(x-xa(klo))/h
       y=a*ya(klo)+b*ya(khi)+((a**3-a)*y2a(klo)+(b**3-b)*y2a(khi))*(h**2)/6.d0
       return
-      END
+      END subroutine
 !-------------------------------------------------------------------------------
 
 
       SUBROUTINE spline(x,y,n,yp1,ypn,y2)
       INTEGER n,NMAX
       DOUBLE PRECISION yp1,ypn,x(n),y(n),y2(n)
-      PARAMETER (NMAX=500)
+      PARAMETER (NMAX=2500)
       INTEGER i,k
       DOUBLE PRECISION p,qn,sig,un,u(NMAX)
       if (yp1.gt..99d30) then
@@ -62,7 +62,7 @@ contains
         y2(k)=y2(k)*y2(k+1)+u(k)
 12    continue
       return
-      END
+      END subroutine
 
 !-------------------------------------------------------------------------------
 
@@ -84,7 +84,7 @@ contains
 12      continue
 13    continue
       return
-      END
+      END subroutine
 
 !-------------------------------------------------------------------------------
 
@@ -105,7 +105,7 @@ contains
       call spline(x1a,yytmp,m,1.d30,1.d30,y2tmp)
       call splint(x1a,yytmp,y2tmp,m,x1,y)
       return
-      END
+      END subroutine
       
 !-------------------------------------------------------------------------------
 
@@ -128,7 +128,7 @@ contains
 11    continue
       ss=xr*ss
       return
-      END 
+      END subroutine
 
 !-------------------------------------------------------------------------------
 
@@ -197,6 +197,99 @@ contains
       END FUNCTION GASDEV
       
 !-------------------------------------------------------------------------------
+
+
+      SUBROUTINE ludcmp(a,n,np,indx,d)
+      INTEGER n,np,indx(n),NMAX
+      DOUBLE PRECISION d,a(np,np),TINY
+      PARAMETER (NMAX=500,TINY=1.0d-20)
+      INTEGER i,imax,j,k
+      DOUBLE PRECISION aamax,dum,sum,vv(NMAX)
+      d=1.d0
+      do 12 i=1,n
+        aamax=0.d0
+        do 11 j=1,n
+          if (abs(a(i,j)).gt.aamax) aamax=abs(a(i,j))
+11      continue
+!        if (aamax.eq.0.d0) pause 'singular matrix in ludcmp'
+        vv(i)=1.d0/aamax
+12    continue
+      do 19 j=1,n
+        do 14 i=1,j-1
+          sum=a(i,j)
+          do 13 k=1,i-1
+            sum=sum-a(i,k)*a(k,j)
+13        continue
+          a(i,j)=sum
+14      continue
+        aamax=0.d0
+        do 16 i=j,n
+          sum=a(i,j)
+          do 15 k=1,j-1
+            sum=sum-a(i,k)*a(k,j)
+15        continue
+          a(i,j)=sum
+          dum=vv(i)*abs(sum)
+          if (dum.ge.aamax) then
+            imax=i
+            aamax=dum
+          endif
+16      continue
+        if (j.ne.imax)then
+          do 17 k=1,n
+            dum=a(imax,k)
+            a(imax,k)=a(j,k)
+            a(j,k)=dum
+17        continue
+          d=-d
+          vv(imax)=vv(j)
+        endif
+        indx(j)=imax
+        if(a(j,j).eq.0.d0)a(j,j)=TINY
+        if(j.ne.n)then
+          dum=1.d0/a(j,j)
+          do 18 i=j+1,n
+            a(i,j)=a(i,j)*dum
+18        continue
+        endif
+19    continue
+      return
+      END subroutine
+
+!======================================================================================
+      SUBROUTINE lubksb(a,n,np,indx,b)
+      INTEGER n,np,indx(n)
+      DOUBLE PRECISION a(np,np),b(n)
+      INTEGER i,ii,j,ll
+      DOUBLE PRECISION sum
+      ii=0
+      do 12 i=1,n
+        ll=indx(i)
+        sum=b(ll)
+        b(ll)=b(i)
+        if (ii.ne.0)then
+          do 11 j=ii,i-1
+            sum=sum-a(i,j)*b(j)
+11        continue
+        else if (sum.ne.0.d0) then
+          ii=i
+        endif
+        b(i)=sum
+12    continue
+      do 14 i=n,1,-1
+        sum=b(i)
+        do 13 j=i+1,n
+          sum=sum-a(i,j)*b(j)
+13      continue
+        b(i)=sum/a(i,i)
+14    continue
+      return
+      END subroutine
+
+
+!======================================================================================
+
+
 
 end module nr
 
